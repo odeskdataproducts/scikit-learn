@@ -35,19 +35,17 @@ import numpy as np
 import scipy.sparse as sp
 
 from ..base import BaseEstimator, TransformerMixin
-#from ..externals import six
-from sklearn.externals import six
-#from ..externals.six.moves import xrange
+from ..externals import six
+from ..externals.six.moves import xrange
 from ..preprocessing import normalize
 from .hashing import FeatureHasher
 from .stop_words import ENGLISH_STOP_WORDS
 from ..utils import deprecated
 from ..utils.fixes import frombuffer_empty
 from ..utils.validation import check_is_fitted
-
 from .readability import Readability
-from gensim import corpora, models
 
+from gensim import corpora, models
 
 __all__ = ['CountVectorizer',
            'ENGLISH_STOP_WORDS',
@@ -719,9 +717,7 @@ class CountVectorizer(BaseEstimator, VectorizerMixin):
         if low is not None:
             mask &= dfs >= low
         if limit is not None and mask.sum() > limit:
-            # backward compatibility requires us to keep lower indices in ties!
-            # (and hence to reverse the sort by negating dfs)
-            mask_inds = (-dfs[mask]).argsort()[:limit]
+            mask_inds = (-tfs[mask]).argsort()[:limit]
             new_mask = np.zeros(len(dfs), dtype=bool)
             new_mask[np.where(mask)[0][mask_inds]] = True
             mask = new_mask
@@ -1459,12 +1455,12 @@ class LdaVectorizer(CountVectorizer):
     ----------
     == Parameters related to CountVectorizer ==
     input : string {'filename', 'file', 'content'}
-        If filename, the sequence passed as an argument to fit is
+        If 'filename', the sequence passed as an argument to fit is
         expected to be a list of filenames that need reading to fetch
         the raw content to analyze.
 
-        If 'file', the sequence items must have 'read' method (file-like
-        object) it is called to fetch the bytes in memory.
+        If 'file', the sequence items must have a 'read' method (file-like
+        object) that is called to fetch the bytes in memory.
 
         Otherwise the input is expected to be the sequence strings or
         bytes items are expected to be analyzed directly.
@@ -1486,8 +1482,10 @@ class LdaVectorizer(CountVectorizer):
         'unicode' is a slightly slower method that works on any characters.
         None (default) does nothing.
 
-    analyzer : string, {'word', 'char'} or callable
+    analyzer : string, {'word', 'char', 'char_wb'} or callable
         Whether the feature should be made of word or character n-grams.
+        Option 'char_wb' creates character n-grams only from text inside
+        word boundaries.
 
         If a callable is passed it is used to extract the sequence of features
         out of the raw, unprocessed input.
@@ -1506,9 +1504,7 @@ class LdaVectorizer(CountVectorizer):
         will be used.
 
     stop_words : string {'english'}, list, or None (default)
-        If a string, it is passed to _check_stop_list and the appropriate stop
-        list is returned. 'english' is currently the only supported string
-        value.
+        If 'english', a built-in stop word list for English is used.
 
         If a list, that list is assumed to contain stop words, all of which
         will be removed from the resulting tokens.
@@ -1517,26 +1513,27 @@ class LdaVectorizer(CountVectorizer):
         in the range [0.7, 1.0) to automatically detect and filter stop
         words based on intra corpus document frequency of terms.
 
-    lowercase : boolean, default True
-        Convert all characters to lowercase befor tokenizing.
+    lowercase : boolean, True by default
+        Convert all characters to lowercase before tokenizing.
 
     token_pattern : string
         Regular expression denoting what constitutes a "token", only used
         if `tokenize == 'word'`. The default regexp select tokens of 2
-        or more letters characters (punctuation is completely ignored
+        or more alphanumeric characters (punctuation is completely ignored
         and always treated as a token separator).
 
     max_df : float in range [0.0, 1.0] or int, optional, 1.0 by default
-        When building the vocabulary ignore terms that have a term frequency
-        strictly higher than the given threshold (corpus specific stop words).
+        When building the vocabulary ignore terms that have a document
+        frequency strictly higher than the given threshold (corpus-specific
+        stop words).
         If float, the parameter represents a proportion of documents, integer
         absolute counts.
         This parameter is ignored if vocabulary is not None.
 
     min_df : float in range [0.0, 1.0] or int, optional, 1 by default
-        When building the vocabulary ignore terms that have a term frequency
-        strictly lower than the given threshold.
-        This value is also called cut-off in the literature.
+        When building the vocabulary ignore terms that have a document
+        frequency strictly lower than the given threshold. This value is also
+        called cut-off in the literature.
         If float, the parameter represents a proportion of documents, integer
         absolute counts.
         This parameter is ignored if vocabulary is not None.
@@ -1550,7 +1547,9 @@ class LdaVectorizer(CountVectorizer):
     vocabulary : Mapping or iterable, optional
         Either a Mapping (e.g., a dict) where keys are terms and values are
         indices in the feature matrix, or an iterable over terms. If not
-        given, a vocabulary is determined from the input documents.
+        given, a vocabulary is determined from the input documents. Indices
+        in the mapping should not be repeated and should not have any gap
+        between 0 and the largest index.
 
     binary : boolean, False by default.
         If True, all non zero counts are set to 1. This is useful for discrete
@@ -1606,14 +1605,13 @@ class LdaVectorizer(CountVectorizer):
 
     """
 
-    def __init__(self, input='content', encoding='utf-8', charset=None,
-                 decode_error='strict', charset_error=None,
-                 strip_accents=None, lowercase=True,
-                 preprocessor=None, tokenizer=None, analyzer='word',
+    def __init__(self, input='content', encoding='utf-8',
+                 decode_error='strict', strip_accents=None,
+                 lowercase=True, preprocessor=None, tokenizer=None,
                  stop_words='english', token_pattern=r"(?u)\b\w\w+\b",
-                 ngram_range=(1, 1), max_df=1.0, min_df=1,
-                 max_features=None, vocabulary=None, binary=False,
-                 dtype=np.int64,
+                 ngram_range=(1, 1), analyzer='word',
+                 max_df=1.0, min_df=1, max_features=None, 
+                 vocabulary=None, binary=False, dtype=np.int64,
                  num_topics=100,
                  distributed=False, chunksize=2000, passes=1, update_every=1,
                  alpha=None, eta=None,
@@ -1623,7 +1621,7 @@ class LdaVectorizer(CountVectorizer):
 
         # initialize a CountVectorizer object
         super(LdaVectorizer, self).__init__(
-            input=input, charset=charset, charset_error=charset_error,
+            input=input,
             encoding=encoding, decode_error=decode_error,
             strip_accents=strip_accents, lowercase=lowercase,
             preprocessor=preprocessor, tokenizer=tokenizer, analyzer=analyzer,
@@ -1773,12 +1771,12 @@ class LsiVectorizer(CountVectorizer):
     ----------
     == Parameters related to CountVectorizer ==
     input : string {'filename', 'file', 'content'}
-        If filename, the sequence passed as an argument to fit is
+        If 'filename', the sequence passed as an argument to fit is
         expected to be a list of filenames that need reading to fetch
         the raw content to analyze.
 
-        If 'file', the sequence items must have 'read' method (file-like
-        object) it is called to fetch the bytes in memory.
+        If 'file', the sequence items must have a 'read' method (file-like
+        object) that is called to fetch the bytes in memory.
 
         Otherwise the input is expected to be the sequence strings or
         bytes items are expected to be analyzed directly.
@@ -1800,8 +1798,10 @@ class LsiVectorizer(CountVectorizer):
         'unicode' is a slightly slower method that works on any characters.
         None (default) does nothing.
 
-    analyzer : string, {'word', 'char'} or callable
+    analyzer : string, {'word', 'char', 'char_wb'} or callable
         Whether the feature should be made of word or character n-grams.
+        Option 'char_wb' creates character n-grams only from text inside
+        word boundaries.
 
         If a callable is passed it is used to extract the sequence of features
         out of the raw, unprocessed input.
@@ -1820,9 +1820,7 @@ class LsiVectorizer(CountVectorizer):
         will be used.
 
     stop_words : string {'english'}, list, or None (default)
-        If a string, it is passed to _check_stop_list and the appropriate stop
-        list is returned. 'english' is currently the only supported string
-        value.
+        If 'english', a built-in stop word list for English is used.
 
         If a list, that list is assumed to contain stop words, all of which
         will be removed from the resulting tokens.
@@ -1831,26 +1829,27 @@ class LsiVectorizer(CountVectorizer):
         in the range [0.7, 1.0) to automatically detect and filter stop
         words based on intra corpus document frequency of terms.
 
-    lowercase : boolean, default True
-        Convert all characters to lowercase befor tokenizing.
+    lowercase : boolean, True by default
+        Convert all characters to lowercase before tokenizing.
 
     token_pattern : string
         Regular expression denoting what constitutes a "token", only used
         if `tokenize == 'word'`. The default regexp select tokens of 2
-        or more letters characters (punctuation is completely ignored
+        or more alphanumeric characters (punctuation is completely ignored
         and always treated as a token separator).
 
     max_df : float in range [0.0, 1.0] or int, optional, 1.0 by default
-        When building the vocabulary ignore terms that have a term frequency
-        strictly higher than the given threshold (corpus specific stop words).
+        When building the vocabulary ignore terms that have a document
+        frequency strictly higher than the given threshold (corpus-specific
+        stop words).
         If float, the parameter represents a proportion of documents, integer
         absolute counts.
         This parameter is ignored if vocabulary is not None.
 
     min_df : float in range [0.0, 1.0] or int, optional, 1 by default
-        When building the vocabulary ignore terms that have a term frequency
-        strictly lower than the given threshold.
-        This value is also called cut-off in the literature.
+        When building the vocabulary ignore terms that have a document
+        frequency strictly lower than the given threshold. This value is also
+        called cut-off in the literature.
         If float, the parameter represents a proportion of documents, integer
         absolute counts.
         This parameter is ignored if vocabulary is not None.
@@ -1864,7 +1863,9 @@ class LsiVectorizer(CountVectorizer):
     vocabulary : Mapping or iterable, optional
         Either a Mapping (e.g., a dict) where keys are terms and values are
         indices in the feature matrix, or an iterable over terms. If not
-        given, a vocabulary is determined from the input documents.
+        given, a vocabulary is determined from the input documents. Indices
+        in the mapping should not be repeated and should not have any gap
+        between 0 and the largest index.
 
     binary : boolean, False by default.
         If True, all non zero counts are set to 1. This is useful for discrete
@@ -1915,14 +1916,13 @@ class LsiVectorizer(CountVectorizer):
 
     """
 
-    def __init__(self, input='content', encoding='utf-8', charset=None,
-                 decode_error='strict', charset_error=None,
-                 strip_accents=None, lowercase=True,
-                 preprocessor=None, tokenizer=None, analyzer='word',
+    def __init__(self, input='content', encoding='utf-8',
+                 decode_error='strict', strip_accents=None,
+                 lowercase=True, preprocessor=None, tokenizer=None,
                  stop_words='english', token_pattern=r"(?u)\b\w\w+\b",
-                 ngram_range=(1, 1), max_df=1.0, min_df=1,
-                 max_features=None, vocabulary=None, binary=False,
-                 dtype=np.int64,
+                 ngram_range=(1, 1), analyzer='word',
+                 max_df=1.0, min_df=1, max_features=None,
+                 vocabulary=None, binary=False, dtype=np.int64,
                  num_topics=100,
                  distributed=False, chunksize=20000,
                  onepass=True, power_iters=2, extra_samples=100,
@@ -1932,7 +1932,7 @@ class LsiVectorizer(CountVectorizer):
 
         # initialize a CountVectorizer object
         super(LsiVectorizer, self).__init__(
-            input=input, charset=charset, charset_error=charset_error,
+            input=input,
             encoding=encoding, decode_error=decode_error,
             strip_accents=strip_accents, lowercase=lowercase,
             preprocessor=preprocessor, tokenizer=tokenizer,
@@ -2149,4 +2149,3 @@ class ReadabilityTransformer():
 
     def rix(self, r):
         return r.RIX()
->>>>>>> remotes/origin/new-feat-feature_extraction-text
