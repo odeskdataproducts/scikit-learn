@@ -1618,7 +1618,7 @@ class LdaVectorizer(CountVectorizer):
 
         # initialize a CountVectorizer object
         super(LdaVectorizer, self).__init__(
-            input=input, charset_error=charset_error,
+            input=input,
             encoding=encoding, decode_error=decode_error,
             strip_accents=strip_accents, lowercase=lowercase,
             preprocessor=preprocessor, tokenizer=tokenizer, analyzer=analyzer,
@@ -1927,7 +1927,7 @@ class LsiVectorizer(CountVectorizer):
 
         # initialize a CountVectorizer object
         super(LsiVectorizer, self).__init__(
-            input=input, charset_error=charset_error,
+            input=input,
             encoding=encoding, decode_error=decode_error,
             strip_accents=strip_accents, lowercase=lowercase,
             preprocessor=preprocessor, tokenizer=tokenizer,
