@@ -64,6 +64,18 @@ New features
    - Added shrinkage support to :class:`lda.LDA` using two new solvers. By
      `Clemens Brunner`_ and `Martin Billinger`_.
 
+   - Added :class:`kernel_ridge.KernelRidge`, an implementation of
+     kernelized ridge regression.
+     By `Mathieu Blondel`_ and `Jan Hendrik Metzen`_.
+
+   - All solvers in :class:`linear_model.Ridge` now support `sample_weight`.
+     By `Mathieu Blondel`_.
+
+   - Added :class:`cross_validation.PredefinedSplit` cross-validation
+     for fixed user-provided cross-validation folds.
+     By `untom <https://github.com/untom>`_.
+
+
 Enhancements
 ............
 
@@ -158,6 +170,12 @@ Enhancements
      :class:`tree.DecisionTreeClassifier`, :class:`ensemble.ExtraTreesClassifier`
      and :class:`tree.ExtraTreeClassifier`. By `Trevor Stephens`_.
 
+   - :class:`grid_search.RandomizedSearchCV` now does sampling without
+     replacement if all parameters are given as lists. By `Andreas Müller`_.
+
+   - Parallelized calculation of :func:`pairwise_distances` is now supported
+     for scipy metrics and custom callables. By `Joel Nothman`_.
+
 Documentation improvements
 ..........................
 
@@ -180,6 +198,10 @@ Documentation improvements
    - :class:`sklearn.neighbors.BallTree` and :class:`sklearn.neighbors.KDTree`
      used to point to empty pages stating that they are aliases of BinaryTree.
      This has been fixed to show the correct class docs. By `Manoj Kumar`_.
+
+   - Added silhouette plots for analysis of KMeans clustering using
+     :func:`metrics.silhouette_samples` and :func:`metrics.silhouette_score`.
+     See :ref:`examples_cluster_plot_kmeans_silhouette_analysis.py`
 
 Bug fixes
 .........
@@ -238,13 +260,17 @@ Bug fixes
 
     - When `compute_full_tree` is set to "auto", the full tree is
       built when n_clusters is high and is early stopped when n_clusters is
-      low, while the behavor should be vice-versa in
+      low, while the behavior should be vice-versa in
       :class:`cluster.AgglomerativeClustering` (and friends).
       This has been fixed By `Manoj Kumar`_
 
     - Fix lazy centering of data in :func:`linear_model.enet_path` and
       :func:`linear_model.lasso_path`. It was centered around one. It has
-      been changed to be centred around the origin. By `Manoj Kumar`_
+      been changed to be centered around the origin. By `Manoj Kumar`_
+
+    - Fix handling of precomputed affinity matrices in
+      :class:`cluster.AgglomerativeClustering` when using connectivity
+      constraints. By `Cathy Deng`_
 
 API changes summary
 -------------------
@@ -301,8 +327,12 @@ API changes summary
       been removed. They were deprecated since 0.14
 
     - From now onwards, all estimators will uniformly raise ``NotFittedError``
-      (:class:`utils.validation.NotFittedError`), when any of the ``predict`` 
+      (:class:`utils.validation.NotFittedError`), when any of the ``predict``
       like methods are called before the model is fit. By `Raghav R V`_.
+
+    - Input data validation was refactored for more consistent input
+      validation. The ``check_arrays`` function was replaced by ``check_array``
+      and ``check_X_y``. By `Andreas Müller`_.
 
 .. _changes_0_15_2:
 
@@ -407,6 +437,9 @@ Highlights
    - Added :class:`linear_model.RANSACRegressor` for robust regression
      models.
 
+   - Added dimensionality reduction with :class:`manifold.TSNE` which can be
+     used to visualize high-dimensional data.
+
 
 Changelog
 ---------
@@ -452,6 +485,8 @@ New features
 
    - Added :class:`linear_model.MultiTaskElasticNetCV` and
      :class:`linear_model.MultiTaskLassoCV`. By `Manoj Kumar`_.
+
+   - Added :class:`manifold.TSNE`. By Alexander Fabisch.
 
 Enhancements
 ............
@@ -3190,3 +3225,7 @@ David Huard, Dave Morrill, Ed Schofield, Travis Oliphant, Pearu Peterson.
 .. _Raghav R V: https://github.com/ragv
 
 .. _Trevor Stephens: http://trevorstephens.com/
+
+.. _Jan Hendrik Metzen: https://jmetzen.github.io/
+
+.. _Cathy Deng: https://github.com/cathydeng

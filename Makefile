@@ -37,6 +37,7 @@ test-coverage:
 	$(NOSETESTS) -s -v --with-coverage sklearn
 
 test: test-code test-sphinxext test-doc
+#test: test-code
 
 trailing-spaces:
 	find sklearn -name "*.py" -exec perl -pi -e 's/[ \t]*$$//' {} \;
