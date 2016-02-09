@@ -9,6 +9,8 @@ from sklearn.feature_extraction.text import HashingVectorizer
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.feature_extraction.text import TfidfTransformer
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import Word2VecVectorizer
+from sklearn.feature_extraction.text import Doc2VecVectorizer
 
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 
@@ -17,6 +19,7 @@ from sklearn.cross_validation import cross_val_score
 from sklearn.grid_search import GridSearchCV
 from sklearn.pipeline import Pipeline
 from sklearn.svm import LinearSVC
+from sklearn.linear_model import SGDClassifier
 
 from sklearn.base import clone
 
@@ -912,3 +915,34 @@ def test_vectorizer_vocab_clone():
     vect_vocab.fit(ALL_FOOD_DOCS)
     vect_vocab_clone.fit(ALL_FOOD_DOCS)
     assert_equal(vect_vocab_clone.vocabulary_, vect_vocab.vocabulary_)
+
+def test_word2vec_vectorizer():
+
+    y = np.concatenate((np.ones(len(JUNK_FOOD_DOCS)),
+                        np.zeros(len(NOTJUNK_FOOD_DOCS))))
+    x_train, x_test, y_train, y_test = train_test_split(
+        np.concatenate((JUNK_FOOD_DOCS, NOTJUNK_FOOD_DOCS)), y, test_size=0.2,
+        random_state=0)
+    vect = Word2VecVectorizer(min_count=1)
+    train_vecs = vect.fit_transform(x_train)
+    test_vecs = vect.transform(x_test)
+
+    lr = SGDClassifier(loss='log', penalty='l1')
+    pred = lr.fit(train_vecs, y_train).predict(test_vecs)
+    assert_array_equal(pred, y_test)
+
+def test_doc2vec_vectorizer():
+
+    y = np.concatenate((np.ones(len(JUNK_FOOD_DOCS)),
+                        np.zeros(len(NOTJUNK_FOOD_DOCS))))
+    x_train, x_test, y_train, y_test = train_test_split(
+        np.concatenate((JUNK_FOOD_DOCS, NOTJUNK_FOOD_DOCS)), y, test_size=0.2,
+        random_state=0)
+    vect = Doc2VecVectorizer(min_count=1, vector_size=400, window=2,
+                             iterations=6, dbow_words=True)
+    train_vecs = vect.fit_transform(x_train)
+    test_vecs = vect.transform(x_test)
+
+    lr = SGDClassifier(loss='log', penalty='l1')
+    pred = lr.fit(train_vecs, y_train).predict(test_vecs)
+    assert_array_equal(pred, y_test)

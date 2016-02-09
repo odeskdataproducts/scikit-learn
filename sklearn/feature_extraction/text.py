@@ -49,6 +49,9 @@ from ..utils.validation import check_is_fitted
 from .readability import Readability
 
 from gensim import corpora, models
+from sklearn.preprocessing import scale
+from gensim.models.doc2vec import TaggedDocument
+
 
 __all__ = ['CountVectorizer',
            'ENGLISH_STOP_WORDS',
@@ -58,7 +61,9 @@ __all__ = ['CountVectorizer',
            'strip_accents_unicode',
            'strip_tags',
            'LdaVectorizer',
-           'LsiVectorizer']
+           'LsiVectorizer',
+           'Word2VecVectorizer',
+           'Doc2VecVectorizer']
 
 logging.basicConfig(level=logging.DEBUG,
                     format='''%(asctime)s - %(name)s
@@ -776,6 +781,7 @@ class CountVectorizer(BaseEstimator, VectorizerMixin):
         X = sp.csr_matrix((values, j_indices, indptr),
                           shape=(len(indptr) - 1, len(vocabulary)),
                           dtype=self.dtype)
+
         X.sum_duplicates()
         return vocabulary, X
 
@@ -1656,6 +1662,7 @@ class LdaVectorizer(CountVectorizer):
         # build a gensim dictionary
         self._dictionary = corpora.Dictionary([super(LdaVectorizer, self)
                                               .get_feature_names()])
+
         logger.info('Building LDA model: gensim Dictionary generated!')
 
         self._corpus = _generate_gensim_corpus(count_matrix)
@@ -1719,7 +1726,6 @@ class LdaVectorizer(CountVectorizer):
         -------
         vectors : array, [n_samples, n_topics]
         """
-
         self.fit(raw_docs)
         count_matrix = super(LdaVectorizer, self).fit_transform(raw_docs)
         corpus = _generate_gensim_corpus(count_matrix)
@@ -2153,3 +2159,789 @@ class ReadabilityTransformer():
     def rix(self, r):
         return r.RIX()
 
+
+class Word2VecVectorizer(BaseEstimator, VectorizerMixin):
+    """Converts a collection of text documents to a matrix:
+    gaussian distribution with a mean of zero, meaning that values above
+    the mean will be positive, and those below the mean will be negative.
+
+    The word2vec provides an efficient implementation of the continuous
+    bag-of-words and skip-gram architectures for computing vector
+    representations of words. It takes a text corpus as input and produces
+    the word vectors as output. It first constructs a vocabulary from the
+    training text data and then learns vector representation of words.
+    The resulting word vector can be used as features in many natural language
+    processing and machine learning applications.
+
+    The Word2Vec model from gensim is used for implementation.
+
+    More info:
+    http://rare-technologies.com/word2vec-tutorial/
+    https://districtdatalabs.silvrback.com/modern-methods-for-sentiment-analysis
+
+    Parameters
+    ----------
+    input : string {'filename', 'file', 'content'}
+        If 'filename', the sequence passed as an argument to fit is
+        expected to be a list of filenames that need reading to fetch
+        the raw content to analyze.
+
+        If 'file', the sequence items must have a 'read' method (file-like
+        object) that is called to fetch the bytes in memory.
+
+        Otherwise the input is expected to be the sequence strings or
+        bytes items are expected to be analyzed directly.
+
+    encoding : string, 'utf-8' by default.
+        If bytes or files are given to analyze, this encoding is used to
+        decode.
+
+    decode_error : {'strict', 'ignore', 'replace'}
+        Instruction on what to do if a byte sequence is given to analyze that
+        contains characters not of the given `encoding`. By default, it is
+        'strict', meaning that a UnicodeDecodeError will be raised. Other
+        values are 'ignore' and 'replace'.
+
+    strip_accents : {'ascii', 'unicode', None}
+        Remove accents during the preprocessing step.
+        'ascii' is a fast method that only works on characters that have
+        an direct ASCII mapping.
+        'unicode' is a slightly slower method that works on any characters.
+        None (default) does nothing.
+
+    analyzer : string, {'word', 'char', 'char_wb'} or callable
+        Whether the feature should be made of word or character n-grams.
+        Option 'char_wb' creates character n-grams only from text inside
+        word boundaries.
+
+        If a callable is passed it is used to extract the sequence of features
+        out of the raw, unprocessed input.
+
+    preprocessor : callable or None (default)
+        Override the preprocessing (string transformation) stage while
+        preserving the tokenizing and n-grams generation steps.
+
+    tokenizer : callable or None (default)
+        Override the string tokenization step while preserving the
+        preprocessing and n-grams generation steps.
+
+    ngram_range : tuple (min_n, max_n)
+        The lower and upper boundary of the range of n-values for different
+        n-grams to be extracted. All values of n such that min_n <= n <= max_n
+        will be used.
+
+    stop_words : string {'english'}, list, or None (default)
+        If 'english', a built-in stop word list for English is used.
+
+        If a list, that list is assumed to contain stop words, all of which
+        will be removed from the resulting tokens.
+
+        If None, no stop words will be used. max_df can be set to a value
+        in the range [0.7, 1.0) to automatically detect and filter stop
+        words based on intra corpus document frequency of terms.
+
+    lowercase : boolean, True by default
+        Convert all characters to lowercase before tokenizing.
+
+    token_pattern : string
+        Regular expression denoting what constitutes a "token", only used
+        if `tokenize == 'word'`. The default regexp select tokens of 2
+        or more alphanumeric characters (punctuation is completely ignored
+        and always treated as a token separator).
+
+    max_df : float in range [0.0, 1.0] or int, optional, 1.0 by default
+        When building the vocabulary ignore terms that have a document
+        frequency strictly higher than the given threshold (corpus-specific
+        stop words).
+        If float, the parameter represents a proportion of documents, integer
+        absolute counts.
+        This parameter is ignored if vocabulary is not None.
+
+    min_df : float in range [0.0, 1.0] or int, optional, 1 by default
+        When building the vocabulary ignore terms that have a document
+        frequency strictly lower than the given threshold. This value is also
+        called cut-off in the literature.
+        If float, the parameter represents a proportion of documents, integer
+        absolute counts.
+        This parameter is ignored if vocabulary is not None.
+
+    max_features : optional, None by default
+        If not None, build a vocabulary that only consider the top
+        max_features ordered by term frequency across the corpus.
+
+        This parameter is ignored if vocabulary is not None.
+
+    vocabulary : Mapping or iterable, optional
+        Either a Mapping (e.g., a dict) where keys are terms and values are
+        indices in the feature matrix, or an iterable over terms. If not
+        given, a vocabulary is determined from the input documents. Indices
+        in the mapping should not be repeated and should not have any gap
+        between 0 and the largest index.
+
+    binary : boolean, False by default.
+        If True, all non zero counts are set to 1. This is useful for discrete
+        probabilistic models that model binary events rather than integer
+        counts.
+
+    dtype : type, optional
+        Type of the matrix returned by fit_transform() or transform().
+
+    train_algorithm : string, optional, 'skip-gram' by default.
+        Defines the training algorithm. Otherwise, 'cbow' is employed.
+
+    vector_size : int, optional. 100 by default
+        Dimensionality of the feature vectors.
+
+    window : int, optional. 5 by default
+        Maximum distance between the current and predicted word within
+        a sentence.
+
+    alpha : float, optional. 0.025 by default
+        Initial learning rate (will linearly drop to zero as training
+        progresses).
+
+    seed : string or int or float or boolean, optional. 1 by default.
+        Used for the random number generator. Initial vectors for each
+        word are seeded with a hash of the concatenation of word + str(seed).
+
+    min_count : int, optional. 5 by default.
+        Ignore all words with total frequency lower than this.
+
+    max_vocab_size : int, optional. None by default.
+        Limit RAM during vocabulary building; if there are more unique
+        words than this, then prune the infrequent ones. Every 10 million
+        word types need about 1GB of RAM. Set to `None` for no limit (default).
+
+    sample : float, optional. 0 by default
+        Threshold for configuring which higher-frequency words are randomly
+        downsampled; default is 0 (off), useful value is 1e-5.
+
+    workers : int, optional. 1 by default.
+        Use this many worker threads to train the model (=faster training
+        with multicore machines).
+
+    hierarchical_sampling : boolean, True by default
+        Hierarchical sampling will be used for model training if true.
+
+    negative_sampling : int, optional. 0 by default.
+        If > 0, negative sampling will be used, the int for negative
+        specifies how many "noise words" should be drawn (usually between 5-20)
+
+    cbow_mean : boolean, False by default.
+        If false (default), use the sum of the context word vectors.
+        If true, use the mean. Only applies when cbow is used.
+
+    hash_function : string, optional. 'hash' by default
+        Hash function to use to randomly initialize weights, for increased
+        training reproducibility. Default is Python's rudimentary built in
+        hash function.
+
+    iterations : int, optional. 1 by default
+        Number of iterations (epochs) over the corpus.
+
+    trim_rule : string, optional. None by default
+        Vocabulary trimming rule, specifies whether certain words should remain
+        in the vocabulary, be trimmed away, or handled using the default
+        (discard if word count < min_count). Can be None (min_count will be
+        used), or a callable that accepts parameters (word, count, min_count)
+        and returns either util.RULE_DISCARD, util.RULE_KEEP or
+        util.RULE_DEFAULT.
+        Note: The rule, if given, is only used prune vocabulary during
+        build_vocab() and is not stored as part of the model.
+
+    sorted_vocab : int, optional.
+        If 1 (default), sort the vocabulary by descending frequency before
+        assigning word indexes.
+    """
+
+    def __init__(self, input='content', encoding='utf-8',
+                 decode_error='strict', strip_accents=None,
+                 lowercase=True, preprocessor=None, tokenizer=None,
+                 stop_words=None, token_pattern=r"(?u)\b\w\w+\b",
+                 ngram_range=(1, 1), analyzer='word', binary=False,
+                 dtype=np.int64,
+
+                 # Word2Vec model parameters
+                 train_algorithm='skip-gram', vector_size=100, min_count=5,
+                 max_vocab_size=None, window=5, sample=0, seed=1, workers=1,
+                 min_alpha=0.0001, hierarchical_sampling=True, iterations=1,
+                 negative_sampling=False, cbow_mean=False, hash_function=hash,
+                 null_word=0, trim_rule=None, sorted_vocab=True, alpha=0.025):
+
+        self.input = input
+        self.encoding = encoding
+        self.decode_error = decode_error
+        self.strip_accents = strip_accents
+        self.preprocessor = preprocessor
+        self.tokenizer = tokenizer
+        self.analyzer = analyzer
+        self.lowercase = lowercase
+        self.token_pattern = token_pattern
+        self.stop_words = stop_words
+        self.ngram_range = ngram_range
+        self.binary = binary
+        self.dtype = dtype
+
+        # these values are predefined, because Word2Vec model builds
+        # the dictionary itself and takes corresponding values from
+        # min_count and max_vocab_size parameters
+        self.max_df = 1.0
+        self.min_df = 1
+        self.max_features = None
+        self.vocabulary = None
+
+        self.vector_size = vector_size
+        self.alpha = alpha
+        self.window = window
+        self.min_count = min_count
+        self.max_vocab_size = max_vocab_size
+        self.sample = sample
+        self.seed = seed
+        self.workers = workers
+        self.min_alpha = min_alpha
+        self.train_algorithm = train_algorithm
+        self.hierarchical_sampling = hierarchical_sampling
+        self.negative_sampling = negative_sampling
+        self.cbow_mean = cbow_mean
+        self.hash_function = hash_function
+        self.iterations = iterations
+        self.null_word = null_word
+        self.trim_rule = trim_rule
+        self.sorted_vocab = sorted_vocab
+
+    def fit(self, raw_documents, y=None):
+        """Build and learn the model of all tokens in the raw documents.
+
+        Parameters
+        ----------
+        raw_documents : iterable
+            An iterable which yields either str, unicode or file objects.
+
+        Returns
+        -------
+        self
+        """
+        logger.info('Prepare sentences from documents')
+        self.analyze = self.build_analyzer()
+        self.sentences = []
+        for doc in raw_documents:
+            self.sentences.append(self.analyze(doc))
+
+        logger.info('Build and train the model')
+        # build and train the model (model builds an internal vocabulary
+        # from sentences, trains itself and creates vectors for each word)
+        logger.info('Training algorithm - %s' % self.train_algorithm)
+        self._model_word2vec = models.Word2Vec(
+            self.sentences, min_count=self.min_count, size=self.vector_size,
+            max_vocab_size=self.max_vocab_size, alpha=self.alpha,
+            window=self.window, sample=self.sample, seed=self.seed,
+            workers=self.workers, min_alpha=self.min_alpha,
+            sg=1 if self.train_algorithm == 'skip-gram' else 0,
+            hs=self.hierarchical_sampling, negative=self.negative_sampling,
+            cbow_mean=self.cbow_mean, hashfxn=self.hash_function,
+            null_word=self.null_word, trim_rule=self.trim_rule,
+            sorted_vocab=self.sorted_vocab, iter=self.iterations)
+
+        return self
+
+    def fit_transform(self, raw_documents, y=None):
+        """Build the model and return term-document matrix.
+
+        This is equivalent to fit followed by transform, but more efficiently
+        implemented.
+
+        Parameters
+        ----------
+        raw_documents : iterable
+            An iterable which yields either str, unicode or file objects.
+
+        Returns
+        -------
+        X : array, [n_samples, vector_size]
+            Document-term matrix.
+        """
+        self.fit(raw_documents)
+        logger.info('Get vectors ... ')
+        train_vecs = np.concatenate([self._build_doc_vector(sentence)
+                                     for sentence in self.sentences])
+        return scale(train_vecs)
+
+    def transform(self, raw_documents):
+        """Transform documents to document-term matrix.
+
+        Extract token counts out of raw text documents using the vocabulary
+        fitted with fit or the one provided to the constructor.
+
+        Parameters
+        ----------
+        raw_documents : iterable
+            An iterable which yields either str, unicode or file objects.
+
+        Returns
+        -------
+        X : matrix, [n_samples, vector_size]
+            Document-term matrix.
+        """
+
+        logger.info('Get vectors ... ')
+        train_vecs = np.concatenate([self._build_doc_vector(self.analyze(doc))
+                                     for doc in raw_documents])
+        return scale(train_vecs)
+
+    def _build_doc_vector(self, doc):
+        """
+        Builds doc vector by using the average value of all word vectors
+        in the sentence (text)
+        """
+        if not self._model_word2vec:
+            raise ValueError("Build and train the model first")
+
+        if not len(self._model_word2vec.vocab):
+            raise ValueError("Empty vocabulary; perhaps the documents only "
+                             "contain stop words or min count of word "
+                             "presence in documents is too high")
+
+        vec = np.zeros(self.vector_size).reshape((1, self.vector_size))
+        count = 0.
+        for word in doc:
+            try:
+                vec += self._model_word2vec[word].reshape((1,
+                                                           self.vector_size))
+                count += 1.
+            except KeyError:
+                continue
+        if count != 0:
+            vec /= count
+        return vec
+
+
+class Doc2VecVectorizer(BaseEstimator, VectorizerMixin):
+    """Converts a collection of text documents to a matrix:
+    gaussian distribution with a mean of zero, meaning that values above
+    the mean will be positive, and those below the mean will be negative.
+
+    Doc2vec (aka paragraph2vec, aka sentence embeddings) modifies the
+    word2vec algorithm to unsupervised learning of continuous representations
+    for larger blocks of text, such as sentences, paragraphs or entire
+    documents. In the word2vec architecture, the two algorithm names are
+    “continuous bag of words” (cbow) and “skip-gram” (sg); in the doc2vec
+    architecture, the corresponding algorithms are “distributed memory” (dm)
+    and “distributed bag of words” (dbow).
+
+    The Doc2Vec model from gensim is used for implementation.
+
+    More info:
+    http://rare-technologies.com/doc2vec-tutorial/
+    https://districtdatalabs.silvrback.com/modern-methods-for-sentiment-analysis
+
+    See also: Word2VecVectorizer
+
+    Parameters
+    ----------
+    input : string {'filename', 'file', 'content'}
+        If 'filename', the sequence passed as an argument to fit is
+        expected to be a list of filenames that need reading to fetch
+        the raw content to analyze.
+
+        If 'file', the sequence items must have a 'read' method (file-like
+        object) that is called to fetch the bytes in memory.
+
+        Otherwise the input is expected to be the sequence strings or
+        bytes items are expected to be analyzed directly.
+
+    encoding : string, 'utf-8' by default.
+        If bytes or files are given to analyze, this encoding is used to
+        decode.
+
+    decode_error : {'strict', 'ignore', 'replace'}
+        Instruction on what to do if a byte sequence is given to analyze that
+        contains characters not of the given `encoding`. By default, it is
+        'strict', meaning that a UnicodeDecodeError will be raised. Other
+        values are 'ignore' and 'replace'.
+
+    strip_accents : {'ascii', 'unicode', None}
+        Remove accents during the preprocessing step.
+        'ascii' is a fast method that only works on characters that have
+        an direct ASCII mapping.
+        'unicode' is a slightly slower method that works on any characters.
+        None (default) does nothing.
+
+    analyzer : string, {'word', 'char', 'char_wb'} or callable
+        Whether the feature should be made of word or character n-grams.
+        Option 'char_wb' creates character n-grams only from text inside
+        word boundaries.
+
+        If a callable is passed it is used to extract the sequence of features
+        out of the raw, unprocessed input.
+
+    preprocessor : callable or None (default)
+        Override the preprocessing (string transformation) stage while
+        preserving the tokenizing and n-grams generation steps.
+
+    tokenizer : callable or None (default)
+        Override the string tokenization step while preserving the
+        preprocessing and n-grams generation steps.
+
+    ngram_range : tuple (min_n, max_n)
+        The lower and upper boundary of the range of n-values for different
+        n-grams to be extracted. All values of n such that min_n <= n <= max_n
+        will be used.
+
+    stop_words : string {'english'}, list, or None (default)
+        If 'english', a built-in stop word list for English is used.
+
+        If a list, that list is assumed to contain stop words, all of which
+        will be removed from the resulting tokens.
+
+        If None, no stop words will be used. max_df can be set to a value
+        in the range [0.7, 1.0) to automatically detect and filter stop
+        words based on intra corpus document frequency of terms.
+
+    lowercase : boolean, True by default
+        Convert all characters to lowercase before tokenizing.
+
+    token_pattern : string
+        Regular expression denoting what constitutes a "token", only used
+        if `tokenize == 'word'`. The default regexp select tokens of 2
+        or more alphanumeric characters (punctuation is completely ignored
+        and always treated as a token separator).
+
+    max_df : float in range [0.0, 1.0] or int, optional, 1.0 by default
+        When building the vocabulary ignore terms that have a document
+        frequency strictly higher than the given threshold (corpus-specific
+        stop words).
+        If float, the parameter represents a proportion of documents, integer
+        absolute counts.
+        This parameter is ignored if vocabulary is not None.
+
+    min_df : float in range [0.0, 1.0] or int, optional, 1 by default
+        When building the vocabulary ignore terms that have a document
+        frequency strictly lower than the given threshold. This value is also
+        called cut-off in the literature.
+        If float, the parameter represents a proportion of documents, integer
+        absolute counts.
+        This parameter is ignored if vocabulary is not None.
+
+    max_features : optional, None by default
+        If not None, build a vocabulary that only consider the top
+        max_features ordered by term frequency across the corpus.
+
+        This parameter is ignored if vocabulary is not None.
+
+    vocabulary : Mapping or iterable, optional
+        Either a Mapping (e.g., a dict) where keys are terms and values are
+        indices in the feature matrix, or an iterable over terms. If not
+        given, a vocabulary is determined from the input documents. Indices
+        in the mapping should not be repeated and should not have any gap
+        between 0 and the largest index.
+
+    binary : boolean, False by default.
+        If True, all non zero counts are set to 1. This is useful for discrete
+        probabilistic models that model binary events rather than integer
+        counts.
+
+    dtype : type, optional
+        Type of the matrix returned by fit_transform() or transform().
+
+    train_algorithm : string, optional, 'PV-DM' (distributed memory) by default.
+        Defines the training algorithm. Otherwise, 'PV-DBOW' (distributed bag
+        of words) is employed.
+
+    vector_size : int, optional. 300 by default
+        Dimensionality of the feature vectors.
+
+    window : int, optional. 8 by default
+        Maximum distance between the current and predicted word within
+        a sentence.
+
+    alpha : float, optional. 0.025 by default
+        Initial learning rate (will linearly drop to zero as training
+        progresses).
+
+    seed : string or int or float or boolean, optional. 1 by default.
+        Used for the random number generator. Only runs with a single worker
+        will be deterministically reproducible because of the ordering
+        randomness in multi-threaded runs.
+
+    min_count : int, optional. 5 by default.
+        Ignore all words with total frequency lower than this.
+
+    max_vocab_size : int, optional. None by default.
+        Limit RAM during vocabulary building; if there are more unique
+        words than this, then prune the infrequent ones. Every 10 million
+        word types need about 1GB of RAM. Set to `None` for no limit (default).
+
+    sample : float, optional. 0 by default
+        Threshold for configuring which higher-frequency words are randomly
+        downsampled; default is 0 (off), useful value is 1e-5.
+
+    workers : int, optional. 1 by default.
+        Use this many worker threads to train the model (=faster training
+        with multicore machines).
+
+    hierarchical_sampling : boolean, True by default
+        Hierarchical sampling will be used for model training if true.
+
+    negative_sampling : int, optional. 0 by default.
+        If > 0, negative sampling will be used, the int for negative
+        specifies how many "noise words" should be drawn (usually between 5-20)
+
+    hash_function : string, optional. 'hash' by default
+        Hash function to use to randomly initialize weights, for increased
+        training reproducibility. Default is Python's rudimentary built in
+        hash function.
+
+    iterations : int, optional. 1 by default
+        Number of iterations (epochs) over the corpus.
+
+    trim_rule : string, optional. None by default
+        Vocabulary trimming rule, specifies whether certain words should remain
+        in the vocabulary, be trimmed away, or handled using the default
+        (discard if word count < min_count). Can be None (min_count will be
+        used), or a callable that accepts parameters (word, count, min_count)
+        and returns either util.RULE_DISCARD, util.RULE_KEEP or
+        util.RULE_DEFAULT.
+        Note: The rule, if given, is only used prune vocabulary during
+        build_vocab() and is not stored as part of the model.
+
+    sorted_vocab : int, optional.
+        If 1 (default), sort the vocabulary by descending frequency before
+        assigning word indexes.
+
+    dm_mean : boolean, False by default
+        if false, use the sum of the context word vectors. If true, use the mean
+        Only applies when dm is used in non-concatenative mode.
+
+    dm_concat : boolean. False by default
+        If True, use concatenation of context vectors rather than sum/average;
+        Note concatenation results in a much-larger model, as the input
+        is no longer the size of one (sampled or arithmatically combined)
+        word vector, but the size of the tag(s) and all words in the context
+        strung together.
+
+    dm_tag_count : integer, 1 by default
+        Expected constant number of document tags per document, when using
+        dm_concat mode
+
+    dbow_words : boolean, default is False.
+        If set to True trains word-vectors (in skip-gram fashion) simultaneous
+        with DBOW doc-vector training; default is False (faster training of
+        doc-vectors only)
+    """
+
+    def __init__(self, input='content', encoding='utf-8',
+                 decode_error='strict', strip_accents=None,
+                 lowercase=True, preprocessor=None, tokenizer=None,
+                 stop_words=None, analyzer='word', binary=False,
+                 token_pattern=r"(?u)[\b\w\w+\b]+|[.,!?();:\"{}\[\]]",
+                 ngram_range=(1, 1), dtype=np.int64,
+
+                 # Word2Vec model parameters
+                 train_algorithm='pv-dm', vector_size=300, min_count=5,
+                 max_vocab_size=None, window=8, sample=0, seed=1, workers=1,
+                 min_alpha=0.0001, hierarchical_sampling=True, iterations=1,
+                 negative_sampling=False, hash_function=hash,
+                 trim_rule=None, sorted_vocab=True, alpha=0.025,
+                 dbow_words=False, dm_mean=False, dm_concat=False,
+                 dm_tag_count=1, docvecs=None, docvecs_mapfile=None,
+                 comment=None, retrain_count=10):
+        self.input = input
+        self.encoding = encoding
+        self.decode_error = decode_error
+        self.strip_accents = strip_accents
+        self.preprocessor = preprocessor
+        self.tokenizer = tokenizer
+        self.analyzer = analyzer
+        self.lowercase = lowercase
+        self.token_pattern = token_pattern
+        self.stop_words = stop_words
+        self.ngram_range = ngram_range
+        self.binary = binary
+        self.dtype = dtype
+
+        # these values are predefined, because Word2Vec model builds
+        # the dictionary itself and takes corresponding values from
+        # min_count and max_vocab_size parameters
+        self.max_df = 1.0
+        self.min_df = 1
+        self.max_features = None
+        self.vocabulary = None
+
+        self.vector_size = vector_size
+        self.alpha = alpha
+        self.window = window
+        self.min_count = min_count
+        self.max_vocab_size = max_vocab_size
+        self.sample = sample
+        self.seed = seed
+        self.workers = workers
+        self.min_alpha = min_alpha
+        self.train_algorithm = train_algorithm
+        self.hierarchical_sampling = hierarchical_sampling
+        self.negative_sampling = negative_sampling
+        self.hash_function = hash_function
+        self.iterations = iterations
+        self.trim_rule = trim_rule
+        self.sorted_vocab = sorted_vocab
+
+        self.dbow_words = dbow_words
+        self.dm_mean = dm_mean
+        self.dm_concat = dm_concat
+        self.dm_tag_count = dm_tag_count
+        self.docvecs = docvecs
+        self.docvecs_mapfile = docvecs_mapfile
+        self.comment = comment
+        self.retrain_count = retrain_count
+
+        self.tagged_documents = []
+
+    def fit(self, raw_documents, y=None):
+        """Build and learn the model of all tokens in the raw documents.
+
+        Parameters
+        ----------
+        raw_documents : iterable
+            An iterable which yields either str, unicode or file objects.
+
+        Returns
+        -------
+        self
+        """
+        logger.info('Prepare documents')
+        self._prepare_documents(raw_documents)
+
+        # build and train the model (model builds an internal vocabulary
+        # from sentences, trains itself and creates vectors for each doc)
+        logger.info('Training algorithm - %s' % self.train_algorithm)
+        self._model_doc2vec_dm = models.Doc2Vec(
+            documents=self.tagged_documents, min_count=self.min_count,
+            size=self.vector_size, max_vocab_size=self.max_vocab_size,
+            alpha=self.alpha, window=self.window, sample=self.sample,
+            seed=self.seed, workers=self.workers, min_alpha=self.min_alpha,
+            dm=1 if self.train_algorithm == 'pv-dm' else 0,
+            hs=self.hierarchical_sampling, negative=self.negative_sampling,
+            hashfxn=self.hash_function, trim_rule=self.trim_rule,
+            sorted_vocab=self.sorted_vocab, iter=self.iterations,
+            dbow_words=self.dbow_words, dm_mean=self.dm_mean,
+            dm_concat=self.dm_concat, dm_tag_count=self.dm_tag_count,
+            docvecs=self.docvecs, docvecs_mapfile=self.docvecs_mapfile,
+            comment=self.comment)
+        self._model_doc2vec_dbow = models.Doc2Vec(
+            documents=self.tagged_documents, min_count=self.min_count,
+            size=self.vector_size, max_vocab_size=self.max_vocab_size,
+            alpha=self.alpha, window=self.window, sample=self.sample,
+            seed=self.seed, workers=self.workers, min_alpha=self.min_alpha,
+            dm=1 if self.train_algorithm != 'pv-dm' else 0,
+            hs=self.hierarchical_sampling, negative=self.negative_sampling,
+            hashfxn=self.hash_function, trim_rule=self.trim_rule,
+            sorted_vocab=self.sorted_vocab, iter=self.iterations,
+            dbow_words=self.dbow_words, dm_mean=self.dm_mean,
+            dm_concat=self.dm_concat, dm_tag_count=self.dm_tag_count,
+            docvecs=self.docvecs, docvecs_mapfile=self.docvecs_mapfile,
+            comment=self.comment)
+        logger.info('Model was built and trained')
+
+        # pass through the data set multiple times, shuffling the docs
+        # each time to improve accuracy
+        self._shuffle_and_train()
+        logger.info('Training finished')
+
+        return self
+
+    def fit_transform(self, raw_documents, y=None):
+        """Build the model and return term-document matrix.
+
+        This is equivalent to fit followed by transform, but more efficiently
+        implemented.
+
+        Parameters
+        ----------
+        raw_documents : iterable
+            An iterable which yields either str, unicode or file objects.
+
+        Returns
+        -------
+        X : array, [n_samples, vector_size]
+            Document-term matrix.
+        """
+        self.fit(raw_documents)
+        logger.info('Get vectors ...')
+        return self._get_vectors(self.tagged_documents)
+
+    def transform(self, raw_documents):
+        """Transform documents to document-term matrix.
+
+        Extract token counts out of raw text documents using the vocabulary
+        fitted with fit or the one provided to the constructor.
+
+        Parameters
+        ----------
+        raw_documents : iterable
+            An iterable which yields either str, unicode or file objects.
+
+        Returns
+        -------
+        X : matrix, [n_samples, vector_size]
+            Document-term matrix.
+        """
+        logger.info('Prepare sentences passed to transform for training')
+        self._prepare_documents(raw_documents)
+        self._shuffle_and_train()
+        logger.info('Training finished. Get vectors ...')
+
+        return self._get_vectors(self.tagged_documents)
+
+    def _get_vectors(self, tagged_docs):
+        """
+        Get vectors learned by the model
+        """
+        if not self._model_doc2vec_dm:
+            raise ValueError("Build and train the model first")
+
+        if not len(self._model_doc2vec_dm.vocab):
+            raise ValueError("Empty vocabulary; perhaps the documents only "
+                             "contain stop words or min count of word "
+                             "presence in documents is too high")
+        vectors = [np.array(
+            self._model_doc2vec_dm.docvecs[doc.tags[0]]).reshape(
+            (1, self.vector_size))
+            for doc in tagged_docs]
+        v = np.concatenate(vectors)  # doc2vec result for DM algorithm
+        vectors1 = [np.array(
+            self._model_doc2vec_dbow.docvecs[doc.tags[0]]).reshape(
+            (1, self.vector_size))
+            for doc in tagged_docs]
+        v1 = np.concatenate(vectors1)  # doc2vec result for DBOW algorithm
+        return v#np.hstack((v, v1)) - for both; v or v1, in case of separate result
+
+    def _prepare_documents(self, raw_documents, label='fit'):
+        """
+        Transforms raw_documents to TaggedDocuments
+        """
+        self.analyze = self.build_analyzer()
+        self.tagged_documents = []
+        i = 0
+        for doc in raw_documents:
+            tag = '%s_%s' % (label, i)
+            self.tagged_documents.append(
+                TaggedDocument(self.analyze(doc), [tag]))
+            i += 1
+
+        return self.tagged_documents
+
+    def _shuffle_and_train(self):
+        """
+        Shuffles the tagged documents list and re-trains the model
+        """
+        if not self._model_doc2vec_dm:
+            raise ValueError("Build and train the model first")
+        for epoch in range(self.retrain_count):
+            logger.info('Shuffle the docs and train the model again. Step %s '
+                        'of %s' % (epoch + 1, self.retrain_count))
+            perm = np.random.permutation(self.tagged_documents)
+            td = []
+            for i in perm:
+                td.append(TaggedDocument(i[0], i[1]))
+            del perm
+            self._model_doc2vec_dm.train(td)
+            self._model_doc2vec_dbow.train(td)
