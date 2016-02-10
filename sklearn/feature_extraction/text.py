@@ -2365,8 +2365,9 @@ class Word2VecVectorizer(BaseEstimator, VectorizerMixin):
                  train_algorithm='skip-gram', vector_size=100, min_count=5,
                  max_vocab_size=None, window=5, sample=0, seed=1, workers=1,
                  min_alpha=0.0001, hierarchical_sampling=True, iterations=1,
-                 negative_sampling=False, cbow_mean=False, hash_function=hash,
-                 null_word=0, trim_rule=None, sorted_vocab=True, alpha=0.025):
+                 negative_sampling=False, cbow_mean=False, null_word=False,
+                 hash_function='hash', trim_rule=None, sorted_vocab=True,
+                 alpha=0.025):
 
         self.input = input
         self.encoding = encoding
@@ -2422,10 +2423,10 @@ class Word2VecVectorizer(BaseEstimator, VectorizerMixin):
         self
         """
         logger.info('Prepare sentences from documents')
-        self.analyze = self.build_analyzer()
+        analyze = self.build_analyzer()
         self.sentences = []
         for doc in raw_documents:
-            self.sentences.append(self.analyze(doc))
+            self.sentences.append(analyze(doc))
 
         logger.info('Build and train the model')
         # build and train the model (model builds an internal vocabulary
@@ -2438,7 +2439,7 @@ class Word2VecVectorizer(BaseEstimator, VectorizerMixin):
             workers=self.workers, min_alpha=self.min_alpha,
             sg=1 if self.train_algorithm == 'skip-gram' else 0,
             hs=self.hierarchical_sampling, negative=self.negative_sampling,
-            cbow_mean=self.cbow_mean, hashfxn=self.hash_function,
+            cbow_mean=self.cbow_mean, hashfxn=eval(self.hash_function),
             null_word=self.null_word, trim_rule=self.trim_rule,
             sorted_vocab=self.sorted_vocab, iter=self.iterations)
 
@@ -2482,9 +2483,9 @@ class Word2VecVectorizer(BaseEstimator, VectorizerMixin):
         X : matrix, [n_samples, vector_size]
             Document-term matrix.
         """
-
         logger.info('Get vectors ... ')
-        train_vecs = np.concatenate([self._build_doc_vector(self.analyze(doc))
+        analyze = self.build_analyzer()
+        train_vecs = np.concatenate([self._build_doc_vector(analyze(doc))
                                      for doc in raw_documents])
         return scale(train_vecs)
 
@@ -2740,7 +2741,7 @@ class Doc2VecVectorizer(BaseEstimator, VectorizerMixin):
                  train_algorithm='pv-dm', vector_size=300, min_count=5,
                  max_vocab_size=None, window=8, sample=0, seed=1, workers=1,
                  min_alpha=0.0001, hierarchical_sampling=True, iterations=1,
-                 negative_sampling=False, hash_function=hash,
+                 negative_sampling=False, hash_function='hash',
                  trim_rule=None, sorted_vocab=True, alpha=0.025,
                  dbow_words=False, dm_mean=False, dm_concat=False,
                  dm_tag_count=1, docvecs=None, docvecs_mapfile=None,
@@ -2820,7 +2821,7 @@ class Doc2VecVectorizer(BaseEstimator, VectorizerMixin):
             seed=self.seed, workers=self.workers, min_alpha=self.min_alpha,
             dm=1 if self.train_algorithm == 'pv-dm' else 0,
             hs=self.hierarchical_sampling, negative=self.negative_sampling,
-            hashfxn=self.hash_function, trim_rule=self.trim_rule,
+            hashfxn=eval(self.hash_function), trim_rule=self.trim_rule,
             sorted_vocab=self.sorted_vocab, iter=self.iterations,
             dbow_words=self.dbow_words, dm_mean=self.dm_mean,
             dm_concat=self.dm_concat, dm_tag_count=self.dm_tag_count,
@@ -2833,7 +2834,7 @@ class Doc2VecVectorizer(BaseEstimator, VectorizerMixin):
             seed=self.seed, workers=self.workers, min_alpha=self.min_alpha,
             dm=1 if self.train_algorithm != 'pv-dm' else 0,
             hs=self.hierarchical_sampling, negative=self.negative_sampling,
-            hashfxn=self.hash_function, trim_rule=self.trim_rule,
+            hashfxn=eval(self.hash_function), trim_rule=self.trim_rule,
             sorted_vocab=self.sorted_vocab, iter=self.iterations,
             dbow_words=self.dbow_words, dm_mean=self.dm_mean,
             dm_concat=self.dm_concat, dm_tag_count=self.dm_tag_count,
@@ -2912,19 +2913,19 @@ class Doc2VecVectorizer(BaseEstimator, VectorizerMixin):
             (1, self.vector_size))
             for doc in tagged_docs]
         v1 = np.concatenate(vectors1)  # doc2vec result for DBOW algorithm
-        return v#np.hstack((v, v1)) - for both; v or v1, in case of separate result
+        return v  # np.hstack((v, v1)) for both; v or v1 - separate result
 
     def _prepare_documents(self, raw_documents, label='fit'):
         """
         Transforms raw_documents to TaggedDocuments
         """
-        self.analyze = self.build_analyzer()
+        analyze = self.build_analyzer()
         self.tagged_documents = []
         i = 0
         for doc in raw_documents:
             tag = '%s_%s' % (label, i)
             self.tagged_documents.append(
-                TaggedDocument(self.analyze(doc), [tag]))
+                TaggedDocument(analyze(doc), [tag]))
             i += 1
 
         return self.tagged_documents
