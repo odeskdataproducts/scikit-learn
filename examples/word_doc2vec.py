@@ -34,6 +34,8 @@ parser.add_argument('-size', '--vector_size', type=int, default=100)
 parser.add_argument('-min_count', '--min_count', type=int, default=5)
 parser.add_argument('-window', '--window', type=int, default=5)
 parser.add_argument('-iter', '--iterations', type=int, default=6)
+parser.add_argument('-train', '--train', type=str)
+parser.add_argument('-dbow_words', '--dbow_words', type=bool, default=True)
 parser.add_argument('-word2vec', '--use_w2v', action='store_true')
 parser.add_argument('-doc2vec', '--use_d2v', action='store_true')
 
@@ -42,7 +44,7 @@ usage = '''Usage: word_doc_2_vec.py -size <vector size>
            <max distance between current and predicted word>
            -iter <number of iterations for building vocabulary>
            -train <train algorithm: skip-gram/cbow for word2vec,
-           pv-dm/pv-dbow for doc2vec>
+           pv-dm/pv-dbow/both for doc2vec>
            (-word2vec|-doc2vec)'''
 try:
     args = parser.parse_args()
@@ -55,14 +57,17 @@ if args.use_w2v:
     model = Word2VecVectorizer(vector_size=args.vector_size,
                                min_count=args.min_count,
                                window=args.window,
-                               iterations=args.iterations)
+                               iterations=args.iterations,
+                               train_algorithm=args.train)
 
 # if Doc2Vec model is used
 if args.use_d2v:
     model = Doc2VecVectorizer(vector_size=args.vector_size,
                               min_count=args.min_count,
                               window=args.window,
-                              iterations=args.iterations)
+                              iterations=args.iterations,
+                              train_algorithm=args.train,
+                              dbow_words=args.dbow_words)
 
 vectors = model.fit_transform(newsgroups_train.data)
 #print vectors

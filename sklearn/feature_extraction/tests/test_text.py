@@ -916,6 +916,7 @@ def test_vectorizer_vocab_clone():
     vect_vocab_clone.fit(ALL_FOOD_DOCS)
     assert_equal(vect_vocab_clone.vocabulary_, vect_vocab.vocabulary_)
 
+
 def test_word2vec_vectorizer():
 
     y = np.concatenate((np.ones(len(JUNK_FOOD_DOCS)),
@@ -923,6 +924,7 @@ def test_word2vec_vectorizer():
     x_train, x_test, y_train, y_test = train_test_split(
         np.concatenate((JUNK_FOOD_DOCS, NOTJUNK_FOOD_DOCS)), y, test_size=0.2,
         random_state=0)
+    # skip-gram
     vect = Word2VecVectorizer(min_count=1)
     train_vecs = vect.fit_transform(x_train)
     test_vecs = vect.transform(x_test)
@@ -931,6 +933,16 @@ def test_word2vec_vectorizer():
     pred = lr.fit(train_vecs, y_train).predict(test_vecs)
     assert_array_equal(pred, y_test)
 
+    # cbow
+    vect = Word2VecVectorizer(min_count=1, train_algorithm='cbow')
+    train_vecs = vect.fit_transform(x_train)
+    test_vecs = vect.transform(x_test)
+
+    lr = SGDClassifier(loss='log', penalty='l1')
+    pred = lr.fit(train_vecs, y_train).predict(test_vecs)
+    assert_array_equal(pred, y_test)
+
+
 def test_doc2vec_vectorizer():
 
     y = np.concatenate((np.ones(len(JUNK_FOOD_DOCS)),
@@ -938,8 +950,31 @@ def test_doc2vec_vectorizer():
     x_train, x_test, y_train, y_test = train_test_split(
         np.concatenate((JUNK_FOOD_DOCS, NOTJUNK_FOOD_DOCS)), y, test_size=0.2,
         random_state=0)
+    # pv-dm
     vect = Doc2VecVectorizer(min_count=1, vector_size=400, window=2,
-                             iterations=6, dbow_words=True)
+                             iterations=6)
+    train_vecs = vect.fit_transform(x_train)
+    test_vecs = vect.transform(x_test)
+
+    lr = SGDClassifier(loss='log', penalty='l1')
+    pred = lr.fit(train_vecs, y_train).predict(test_vecs)
+    assert_array_equal(pred, y_test)
+
+    # pv-dbow
+    vect = Doc2VecVectorizer(min_count=1, vector_size=400, window=2,
+                             iterations=3, dbow_words=True,
+                             train_algorithm='pv-dbow')
+    train_vecs = vect.fit_transform(x_train)
+    test_vecs = vect.transform(x_test)
+
+    lr = SGDClassifier(loss='log', penalty='l1')
+    pred = lr.fit(train_vecs, y_train).predict(test_vecs)
+    assert_array_equal(pred, y_test)
+
+    # both
+    vect = Doc2VecVectorizer(min_count=1, vector_size=400, window=2,
+                             iterations=3, dbow_words=True,
+                             train_algorithm='both')
     train_vecs = vect.fit_transform(x_train)
     test_vecs = vect.transform(x_test)
 

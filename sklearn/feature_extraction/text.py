@@ -2814,32 +2814,37 @@ class Doc2VecVectorizer(BaseEstimator, VectorizerMixin):
         # build and train the model (model builds an internal vocabulary
         # from sentences, trains itself and creates vectors for each doc)
         logger.info('Training algorithm - %s' % self.train_algorithm)
-        self._model_doc2vec_dm = models.Doc2Vec(
-            documents=self.tagged_documents, min_count=self.min_count,
-            size=self.vector_size, max_vocab_size=self.max_vocab_size,
-            alpha=self.alpha, window=self.window, sample=self.sample,
-            seed=self.seed, workers=self.workers, min_alpha=self.min_alpha,
-            dm=1 if self.train_algorithm == 'pv-dm' else 0,
-            hs=self.hierarchical_sampling, negative=self.negative_sampling,
-            hashfxn=eval(self.hash_function), trim_rule=self.trim_rule,
-            sorted_vocab=self.sorted_vocab, iter=self.iterations,
-            dbow_words=self.dbow_words, dm_mean=self.dm_mean,
-            dm_concat=self.dm_concat, dm_tag_count=self.dm_tag_count,
-            docvecs=self.docvecs, docvecs_mapfile=self.docvecs_mapfile,
-            comment=self.comment)
-        self._model_doc2vec_dbow = models.Doc2Vec(
-            documents=self.tagged_documents, min_count=self.min_count,
-            size=self.vector_size, max_vocab_size=self.max_vocab_size,
-            alpha=self.alpha, window=self.window, sample=self.sample,
-            seed=self.seed, workers=self.workers, min_alpha=self.min_alpha,
-            dm=1 if self.train_algorithm != 'pv-dm' else 0,
-            hs=self.hierarchical_sampling, negative=self.negative_sampling,
-            hashfxn=eval(self.hash_function), trim_rule=self.trim_rule,
-            sorted_vocab=self.sorted_vocab, iter=self.iterations,
-            dbow_words=self.dbow_words, dm_mean=self.dm_mean,
-            dm_concat=self.dm_concat, dm_tag_count=self.dm_tag_count,
-            docvecs=self.docvecs, docvecs_mapfile=self.docvecs_mapfile,
-            comment=self.comment)
+        self._model_doc2vec_dm = None
+        self._model_doc2vec_dbow = None
+
+        if self.train_algorithm in ('both', 'pv-dm'):
+            self._model_doc2vec_dm = models.Doc2Vec(
+                documents=self.tagged_documents, min_count=self.min_count,
+                size=self.vector_size, max_vocab_size=self.max_vocab_size,
+                alpha=self.alpha, window=self.window, sample=self.sample,
+                seed=self.seed, workers=self.workers, min_alpha=self.min_alpha,
+                dm=1,  # training algorithm
+                hs=self.hierarchical_sampling, negative=self.negative_sampling,
+                hashfxn=eval(self.hash_function), trim_rule=self.trim_rule,
+                sorted_vocab=self.sorted_vocab, iter=self.iterations,
+                dbow_words=self.dbow_words, dm_mean=self.dm_mean,
+                dm_concat=self.dm_concat, dm_tag_count=self.dm_tag_count,
+                docvecs=self.docvecs, docvecs_mapfile=self.docvecs_mapfile,
+                comment=self.comment)
+        if self.train_algorithm in ('both', 'pv-dbow'):
+            self._model_doc2vec_dbow = models.Doc2Vec(
+                documents=self.tagged_documents, min_count=self.min_count,
+                size=self.vector_size, max_vocab_size=self.max_vocab_size,
+                alpha=self.alpha, window=self.window, sample=self.sample,
+                seed=self.seed, workers=self.workers, min_alpha=self.min_alpha,
+                dm=0,  # training algorithm
+                hs=self.hierarchical_sampling, negative=self.negative_sampling,
+                hashfxn=eval(self.hash_function), trim_rule=self.trim_rule,
+                sorted_vocab=self.sorted_vocab, iter=self.iterations,
+                dbow_words=self.dbow_words, dm_mean=self.dm_mean,
+                dm_concat=self.dm_concat, dm_tag_count=self.dm_tag_count,
+                docvecs=self.docvecs, docvecs_mapfile=self.docvecs_mapfile,
+                comment=self.comment)
         logger.info('Model was built and trained')
 
         # pass through the data set multiple times, shuffling the docs
@@ -2896,24 +2901,29 @@ class Doc2VecVectorizer(BaseEstimator, VectorizerMixin):
         """
         Get vectors learned by the model
         """
-        if not self._model_doc2vec_dm:
+        if not (self._model_doc2vec_dm or self._model_doc2vec_dbow):
             raise ValueError("Build and train the model first")
 
-        if not len(self._model_doc2vec_dm.vocab):
-            raise ValueError("Empty vocabulary; perhaps the documents only "
-                             "contain stop words or min count of word "
-                             "presence in documents is too high")
-        vectors = [np.array(
-            self._model_doc2vec_dm.docvecs[doc.tags[0]]).reshape(
-            (1, self.vector_size))
-            for doc in tagged_docs]
-        v = np.concatenate(vectors)  # doc2vec result for DM algorithm
-        vectors1 = [np.array(
-            self._model_doc2vec_dbow.docvecs[doc.tags[0]]).reshape(
-            (1, self.vector_size))
-            for doc in tagged_docs]
-        v1 = np.concatenate(vectors1)  # doc2vec result for DBOW algorithm
-        return v  # np.hstack((v, v1)) for both; v or v1 - separate result
+        if self._model_doc2vec_dm:
+            vectors_dm = [np.array(
+                self._model_doc2vec_dm.docvecs[doc.tags[0]]).reshape(
+                    (1, self.vector_size))
+                for doc in tagged_docs]
+            v_dm = np.concatenate(vectors_dm)  # result for DM algorithm
+
+        if self._model_doc2vec_dbow:
+            vectors_dbow = [np.array(
+                self._model_doc2vec_dbow.docvecs[doc.tags[0]]).reshape(
+                    (1, self.vector_size))
+                for doc in tagged_docs]
+            v_dbow = np.concatenate(vectors_dbow)  # result for DBOW algorithm
+
+        if self.train_algorithm == 'both':
+            return np.hstack((v_dm, v_dbow))
+        elif self.train_algorithm == 'pv-dm':
+            return v_dm
+        else:
+            return v_dbow
 
     def _prepare_documents(self, raw_documents, label='fit'):
         """
@@ -2934,8 +2944,9 @@ class Doc2VecVectorizer(BaseEstimator, VectorizerMixin):
         """
         Shuffles the tagged documents list and re-trains the model
         """
-        if not self._model_doc2vec_dm:
+        if not (self._model_doc2vec_dm or self._model_doc2vec_dbow):
             raise ValueError("Build and train the model first")
+
         for epoch in range(self.retrain_count):
             logger.info('Shuffle the docs and train the model again. Step %s '
                         'of %s' % (epoch + 1, self.retrain_count))
@@ -2944,5 +2955,7 @@ class Doc2VecVectorizer(BaseEstimator, VectorizerMixin):
             for i in perm:
                 td.append(TaggedDocument(i[0], i[1]))
             del perm
-            self._model_doc2vec_dm.train(td)
-            self._model_doc2vec_dbow.train(td)
+            if self._model_doc2vec_dm:
+                self._model_doc2vec_dm.train(td)
+            if self._model_doc2vec_dbow:
+                self._model_doc2vec_dbow.train(td)
