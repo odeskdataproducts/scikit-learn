@@ -2013,7 +2013,7 @@ class LsiVectorizer(CountVectorizer):
             # -1 means show all topics
             for topic in self._model_lsi.show_topics(-1, 20):
                 lsi_topic_file.write('\ntopic #' + str(topic_counter)
-                                     + ': ' + topic + '\n')
+                                     + ': ' + topic[1] + '\n')
                 topic_counter += 1
                 lsi_topic_file.flush()
             lsi_topic_file.flush()
