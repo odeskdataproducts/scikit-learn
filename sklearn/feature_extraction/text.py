@@ -916,6 +916,11 @@ class CountVectorizer(BaseEstimator, VectorizerMixin):
         return [t for t, i in sorted(six.iteritems(self.vocabulary_),
                                      key=itemgetter(1))]
 
+    def load_vocabulary(self):
+        """Returns vocabulary dict"""
+        return [{'word': w, 'count': int(count)} for w, count in
+                self.vocabulary_.iteritems()]
+
 
 def _make_int_array():
     """Construct an array.array of a type suitable for scipy.sparse indices."""
@@ -1761,6 +1766,15 @@ class LdaVectorizer(CountVectorizer):
         return _convert_gensim_corpus2csr(self._model_lda[corpus],
                                           num_topics=self.num_topics)
 
+    def load_vocabulary(self):
+        out_result = []
+        for i in range(0, self.num_topics):
+            out_result.append({
+                'topic': 'topic #%s' % i,
+                'content': [(str(k[0]), float(k[1])) for k in
+                            self._model_lda.show_topic(i, 20)]})
+        return out_result
+
 
 class LsiVectorizer(CountVectorizer):
     """Convert a collection of raw documents to a matrix of LSI topic features
@@ -2076,6 +2090,18 @@ class LsiVectorizer(CountVectorizer):
         #                                  num_topics=self.num_topics)
         return _convert_gensim_corpus2csr(self._model_lsi[corpus_tfidf],
                                           num_topics=self.num_topics)
+
+    def load_vocabulary(self):
+        out_result = []
+        i = 0
+        # -1 means show all topics
+        for topic in self._model_lsi.show_topics(-1, 20, formatted=False):
+            out_result.append({
+                'topic': 'topic #%s' % i,
+                'content': [(str(k[0]), float(k[1])) for k in topic[1]]
+            })
+            i += 1
+        return out_result
 
 
 class ReadabilityTransformer():
@@ -2515,6 +2541,22 @@ class Word2VecVectorizer(BaseEstimator, VectorizerMixin):
             vec /= count
         return vec
 
+    def load_vocabulary(self):
+        """
+        Returns vocabulary dict
+        """
+        from six import iteritems
+        vocabulary = self._model_word2vec.vocab
+        return_dict = []
+        for word, vocab in sorted(iteritems(vocabulary),
+                                  key=lambda item: -item[1].count):
+            return_dict.append({
+                'word': str(word),
+                'count': int(vocab.count),
+                'vector': [float(v) for v in
+                           self._model_word2vec.syn0[vocab.index]]})
+        return return_dict
+
 
 class Doc2VecVectorizer(BaseEstimator, VectorizerMixin):
     """Converts a collection of text documents to a matrix:
@@ -2925,7 +2967,7 @@ class Doc2VecVectorizer(BaseEstimator, VectorizerMixin):
         else:
             return v_dbow
 
-    def _prepare_documents(self, raw_documents, label='fit'):
+    def _prepare_documents(self, raw_documents, label='tag'):
         """
         Transforms raw_documents to TaggedDocuments
         """
@@ -2959,3 +3001,29 @@ class Doc2VecVectorizer(BaseEstimator, VectorizerMixin):
                 self._model_doc2vec_dm.train(td)
             if self._model_doc2vec_dbow:
                 self._model_doc2vec_dbow.train(td)
+
+    def load_vocabulary(self):
+        """
+        Outputs vocabulary
+        """
+        return_dict = []
+        for doc in self.tagged_documents:
+            res = {
+                'tags': [str(tag) for tag in doc.tags],
+                'sentence': [str(word) for word in doc.words],
+            }
+            vecs_dm = []
+            vecs_dbow = []
+            for tag in doc.tags:
+                if self._model_doc2vec_dm:
+                    vecs_dm.append([float(v) for v in
+                                   self._model_doc2vec_dm.docvecs[tag]])
+                if self._model_doc2vec_dbow:
+                    vecs_dbow.append([float(v) for v in
+                                     self._model_doc2vec_dbow.docvecs[tag]])
+            if len(vecs_dm):
+                res['vectors_pv_dm'] = vecs_dm
+            if len(vecs_dbow):
+                res['vectors_pv_dbow'] = vecs_dbow
+            return_dict.append(res)
+        return return_dict

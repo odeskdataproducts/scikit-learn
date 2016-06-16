@@ -335,3 +335,8 @@ class DictVectorizer(BaseEstimator, TransformerMixin):
                                                     key=itemgetter(1))]
 
         return self
+
+    def load_vocabulary(self):
+        """Returns vocabulary"""
+        return [{'word': w, 'index': int(i)} for w, i in
+                self.vocabulary_.iteritems()]
