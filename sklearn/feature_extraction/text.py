@@ -918,8 +918,9 @@ class CountVectorizer(BaseEstimator, VectorizerMixin):
 
     def load_vocabulary(self):
         """Returns vocabulary dict"""
-        return [{'word': w, 'count': int(count)} for w, count in
-                self.vocabulary_.iteritems()]
+        self._check_vocabulary()
+        return [{'word': str(w), 'index': int(i)} for w, i in
+                sorted(six.iteritems(self.vocabulary_), key=itemgetter(1))]
 
 
 def _make_int_array():
@@ -1328,6 +1329,17 @@ class TfidfVectorizer(CountVectorizer):
         X = super(TfidfVectorizer, self).transform(raw_documents)
         return self._tfidf.transform(X, copy=False)
 
+    def load_vocabulary(self):
+        """Returns tfidf vocabulary"""
+        check_is_fitted(self, '_tfidf', 'The tfidf vector is not fitted')
+        dict_to_return = []
+        for name in sorted(six.iteritems(self.vocabulary_)):
+            d = {'word': str(name[0]), 'index': int(name[1])}
+            if self.idf_ is not None:
+                d['idf'] = float(self.idf_[int(name[1])])
+            dict_to_return.append(d)
+
+        return dict_to_return
 
 """
 ===============
