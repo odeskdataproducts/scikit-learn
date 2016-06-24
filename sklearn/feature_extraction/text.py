@@ -1336,7 +1336,7 @@ class TfidfVectorizer(CountVectorizer):
         for name in sorted(six.iteritems(self.vocabulary_)):
             d = {'word': str(name[0]), 'index': int(name[1])}
             if self.idf_ is not None:
-                d['idf'] = float(self.idf_[int(name[1])])
+                d['weight'] = float(self.idf_[int(name[1])])
             dict_to_return.append(d)
 
         return dict_to_return
@@ -1642,7 +1642,7 @@ class LdaVectorizer(CountVectorizer):
                  distributed=False, chunksize=2000, passes=1, update_every=1,
                  alpha=None, eta=None,
                  decay=0.5,
-                 writedown_topics=True,
+                 writedown_topics=False,
                  topic_file='lda_topics.txt'):
 
         # initialize a CountVectorizer object
@@ -1962,7 +1962,7 @@ class LsiVectorizer(CountVectorizer):
                  distributed=False, chunksize=20000,
                  onepass=True, power_iters=2, extra_samples=100,
                  decay=1.0,
-                 writedown_topics=True,
+                 writedown_topics=False,
                  topic_file='lsi_topics.txt'):
 
         # initialize a CountVectorizer object
