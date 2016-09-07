@@ -2462,16 +2462,16 @@ class Word2VecVectorizer(BaseEstimator, VectorizerMixin):
         """
         logger.info('Prepare sentences from documents')
         analyze = self.build_analyzer()
-        self.sentences = []
+        sentences = []
         for doc in raw_documents:
-            self.sentences.append(analyze(doc))
+            sentences.append(analyze(doc))
 
         logger.info('Build and train the model')
         # build and train the model (model builds an internal vocabulary
         # from sentences, trains itself and creates vectors for each word)
         logger.info('Training algorithm - %s' % self.train_algorithm)
         self._model_word2vec = models.Word2Vec(
-            self.sentences, min_count=self.min_count, size=self.vector_size,
+            sentences, min_count=self.min_count, size=self.vector_size,
             max_vocab_size=self.max_vocab_size, alpha=self.alpha,
             window=self.window, sample=self.sample, seed=self.seed,
             workers=self.workers, min_alpha=self.min_alpha,
@@ -2500,10 +2500,7 @@ class Word2VecVectorizer(BaseEstimator, VectorizerMixin):
             Document-term matrix.
         """
         self.fit(raw_documents)
-        logger.info('Get vectors ... ')
-        train_vecs = np.concatenate([self._build_doc_vector(sentence)
-                                     for sentence in self.sentences])
-        return scale(train_vecs)
+        return self.transform(raw_documents)
 
     def transform(self, raw_documents):
         """Transform documents to document-term matrix.
